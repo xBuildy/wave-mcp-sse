@@ -17,7 +17,7 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 const MCP_BACKEND_URL = process.env.MCP_BACKEND_URL ||
-  "https://app.base44.com/api/apps/6a6442fdfedd7c7980f4f40b/functions/mcpRouter";
+  "https://oswave.io/api/functions/mcpRouter";
 
 // ── Forward JSON-RPC to Base44 backend ──
 async function forwardToBackend(method, params, id) {
