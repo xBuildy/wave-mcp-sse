@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "base44": {
+      "url": "https://app.base44.com/mcp",
+      "type": "http"
+    },
+    "wave-compute": {
+      "url": "https://dependable-energy-production.up.railway.app/sse",
+      "type": "http"
+    }
+  }
+}
