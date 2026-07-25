@@ -3,10 +3,19 @@
 /**
  * Wave Compute MCP — stdio entry point for npx @xbuildy/wave-compute-mcp
  * Forwards JSON-RPC over stdio to the Wave OS mcpRouter backend.
- * No local HTTP server, no secrets, no port conflicts.
+ * REQUIRES WAVE_API_TOKEN env var — no token, no connection.
  */
 
 const MCP_BACKEND_URL = process.env.MCP_BACKEND_URL || "https://oswave.io/api/functions/mcpRouter";
+const WAVE_API_TOKEN = process.env.WAVE_API_TOKEN;
+
+if (!WAVE_API_TOKEN) {
+  process.stderr.write("ERROR: WAVE_API_TOKEN environment variable is required.\n");
+  process.stderr.write("Get your token from https://oswave.io/settings → MCP Access\n");
+  process.stderr.write("Then set it in your environment or .env file:\n");
+  process.stderr.write("  export WAVE_API_TOKEN=your_token_here\n\n");
+  process.exit(1);
+}
 
 let inputBuffer = "";
 
@@ -56,7 +65,10 @@ async function handleMessage(msg) {
     try {
       const resp = await fetch(MCP_BACKEND_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + WAVE_API_TOKEN
+        },
         body: JSON.stringify({ jsonrpc: "2.0", id: id || "stdio-1", method, params: params || {} })
       });
       if (!resp["ok"]) {
@@ -74,7 +86,6 @@ async function handleMessage(msg) {
   }
 
   if (method === "notifications/initialized") {
-    // No response needed for notifications
     return;
   }
 
@@ -85,4 +96,5 @@ function sendResponse(id, result) {
   process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id, result }) + "\n");
 }
 
-process.stderr.write("Wave Compute MCP stdio bridge v4.1.0 — backend: " + MCP_BACKEND_URL + "\n");
+process.stderr.write("Wave Compute MCP stdio bridge v4.1.0 — auth enabled\n");
+process.stderr.write("Backend: " + MCP_BACKEND_URL + "\n");
