@@ -1,12 +1,33 @@
 {
-  "name": "wave-mcp-sse",
-  "version": "4.0.0",
+  "name": "@xbuildy/wave-compute-mcp",
+  "version": "4.1.0",
+  "description": "The only MCP that gives Cursor developers access to Base44 backend management + decentralized GPU compute via Theta EdgeCloud.",
+  "icon": "https://base44.app/api/apps/69fd12da185a6e091e5bea1c/files/mp/public/69fd12da185a6e091e5bea1c/e0465ef37_wave-logo-128.png",
   "type": "module",
+  "bin": {
+    "wave-compute-mcp": "bin/wave-mcp.js"
+  },
   "scripts": {
-    "start": "node server.js"
+    "start": "node bin/wave-mcp.js",
+    "start:sse": "node server.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "express": "^4.21.0"
-  }
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": ["mcp", "cursor", "base44", "theta", "gpu", "compute", "ai", "wave-os", "model-context-protocol"],
+  "license": "MIT",
+  "homepage": "https://oswave.io",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xBuildy/wave-mcp-sse"
+  },
+  "author": {
+    "name": "Eddie Pizarro",
+    "email": "eddie@oswave.io"
+  },
+  "publisher": "xbuildy"
 }
