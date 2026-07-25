@@ -1,0 +1,12 @@
+{
+  "name": "wave-mcp-sse",
+  "version": "4.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node wave-mcp-sse-server.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "express": "^4.21.0"
+  }
+}
