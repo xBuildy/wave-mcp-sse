@@ -1,6 +1,7 @@
 /**
- * Wave Compute MCP — Railway SSE Bridge v4.1.0
+ * Wave Compute MCP — Railway SSE Bridge v4.2.0
  * Supports both StreamableHTTP (POST /sse) and legacy SSE (GET /sse)
+ * Auth: forwards WAVE_API_TOKEN as Bearer header to mcpRouter
  */
 
 import express from "express";
@@ -19,12 +20,28 @@ const PORT = process.env.PORT || 3000;
 const MCP_BACKEND_URL = process.env.MCP_BACKEND_URL ||
   "https://oswave.io/api/functions/mcpRouter";
 
-// ── Forward JSON-RPC to Base44 backend ──
+// ── AUTH ──
+// Railway env var WAVE_API_TOKEN is forwarded as Bearer header to mcpRouter
+const WAVE_API_TOKEN = process.env.WAVE_API_TOKEN;
+
+if (!WAVE_API_TOKEN) {
+  console.warn("WARNING: WAVE_API_TOKEN not set — tools/list will return empty and tools/call will be blocked.");
+}
+
+function getAuthHeaders() {
+  const headers = { "Content-Type": "application/json" };
+  if (WAVE_API_TOKEN) {
+    headers["Authorization"] = "Bearer " + WAVE_API_TOKEN;
+  }
+  return headers;
+}
+
+// ── Forward JSON-RPC to Base44 backend (with auth) ──
 async function forwardToBackend(method, params, id) {
   try {
     const resp = await fetch(MCP_BACKEND_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: getAuthHeaders(),
       body: JSON.stringify({
         jsonrpc: "2.0",
         id: id || "rail-1",
@@ -48,14 +65,14 @@ async function forwardToBackend(method, params, id) {
 // ── MCP Server factory ──
 function createMcpServer() {
   const server = new Server(
-    { name: "wave-compute", version: "4.1.0" },
+    { name: "wave-compute", version: "4.2.0" },
     { capabilities: { tools: {} } }
   );
 
   server.setRequestHandler(InitializeRequestSchema, async (request) => ({
     protocolVersion: request.params.protocolVersion || "2024-11-05",
     capabilities: { tools: {} },
-    serverInfo: { name: "wave-compute", version: "4.1.0" },
+    serverInfo: { name: "wave-compute", version: "4.2.0" },
   }));
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
@@ -84,13 +101,10 @@ app.get("/sse", async (req, res) => {
 });
 
 // POST /sse — StreamableHTTP single-endpoint (Cursor primary mode)
-// Cursor POSTs JSON-RPC here and expects SSE response stream
 app.post("/sse", async (req, res) => {
   console.log("SSE POST (StreamableHTTP) from", req.ip);
-  // For StreamableHTTP, handle as a single request/response over SSE
   const body = req.body;
 
-  // Set SSE headers
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
@@ -109,7 +123,7 @@ app.post("/sse", async (req, res) => {
       result = {
         protocolVersion: body.params?.protocolVersion || "2024-11-05",
         capabilities: { tools: {} },
-        serverInfo: { name: "wave-compute", version: "4.1.0" },
+        serverInfo: { name: "wave-compute", version: "4.2.0" },
       };
     } else if (method === "tools/list") {
       result = await forwardToBackend("tools/list", body.params || {}, id);
@@ -147,14 +161,15 @@ app.options("*", (req, res) => {
 });
 
 // Health
-app.get("/health", (req, res) => res.json({ ok: true }));
+app.get("/health", (req, res) => res.json({ ok: true, version: "4.2.0", auth: WAVE_API_TOKEN ? "enabled" : "disabled" }));
 app.get("/", (req, res) => res.json({
-  status: "ok", service: "wave-compute-mcp", version: "4.1.0",
-  backend: MCP_BACKEND_URL, sessions: Object.keys(transports).length,
+  status: "ok", service: "wave-compute-mcp", version: "4.2.0",
+  backend: MCP_BACKEND_URL, auth: WAVE_API_TOKEN ? "enabled" : "disabled",
+  sessions: Object.keys(transports).length,
 }));
 
 app.listen(PORT, () => {
-  console.log("Wave Compute MCP SSE bridge v4.1.0 running on port " + PORT);
-  console.log("SSE endpoint: http://localhost:" + PORT + "/sse");
+  console.log("Wave Compute MCP SSE bridge v4.2.0 running on port " + PORT);
+  console.log("Auth: " + (WAVE_API_TOKEN ? "ENABLED" : "DISABLED — set WAVE_API_TOKEN!"));
   console.log("Backend: " + MCP_BACKEND_URL);
 });
