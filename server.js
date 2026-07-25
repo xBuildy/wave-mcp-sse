@@ -1,11 +1,6 @@
 /**
- * Wave Compute MCP — Railway SSE Bridge
- * 
- * Eliminates the local proxy entirely. Cursor connects via HTTP/SSE.
- * Forwards all JSON-RPC to the Base44 mcpRouter backend function.
- * 
- * Deploy: Railway app from this repo, set env var MCP_BACKEND_URL
- * Cursor mcp.json: { "url": "https://wave-mcp.up.railway.app/sse", "type": "http" }
+ * Wave Compute MCP — Railway SSE Bridge v4.1.0
+ * Supports both StreamableHTTP (POST /sse) and legacy SSE (GET /sse)
  */
 
 import express from "express";
@@ -50,46 +45,89 @@ async function forwardToBackend(method, params, id) {
   }
 }
 
-// ── MCP Server instance ──
-const server = new Server(
-  { name: "wave-compute", version: "4.0.0" },
-  { capabilities: { tools: {} } }
-);
+// ── MCP Server factory ──
+function createMcpServer() {
+  const server = new Server(
+    { name: "wave-compute", version: "4.1.0" },
+    { capabilities: { tools: {} } }
+  );
 
-server.setRequestHandler(InitializeRequestSchema, async (request) => {
-  return {
+  server.setRequestHandler(InitializeRequestSchema, async (request) => ({
     protocolVersion: request.params.protocolVersion || "2024-11-05",
     capabilities: { tools: {} },
-    serverInfo: { name: "wave-compute", version: "4.0.0" },
-  };
-});
+    serverInfo: { name: "wave-compute", version: "4.1.0" },
+  }));
 
-server.setRequestHandler(ListToolsRequestSchema, async () => {
-  const result = await forwardToBackend("tools/list", {});
-  return result;
-});
+  server.setRequestHandler(ListToolsRequestSchema, async () => {
+    return await forwardToBackend("tools/list", {});
+  });
 
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args } = request.params;
-  return await forwardToBackend("tools/call", { name, arguments: args || {} }, request.id);
-});
+  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    const { name, arguments: args } = request.params;
+    return await forwardToBackend("tools/call", { name, arguments: args || {} }, request.id);
+  });
 
-// ── SSE transport ──
+  return server;
+}
+
+// ── SSE sessions ──
 const transports = {};
 
-// GET /sse — Cursor opens this connection
+// GET /sse — legacy SSE connection (Cursor fallback)
 app.get("/sse", async (req, res) => {
+  console.log("SSE GET connection from", req.ip);
+  const server = createMcpServer();
   const transport = new SSEServerTransport("/messages", res);
   transports[transport.sessionId] = transport;
-  
-  res.on("close", () => {
-    delete transports[transport.sessionId];
-  });
-  
+  res.on("close", () => { delete transports[transport.sessionId]; });
   await server.connect(transport);
 });
 
-// POST /messages — Cursor sends JSON-RPC through this
+// POST /sse — StreamableHTTP single-endpoint (Cursor primary mode)
+// Cursor POSTs JSON-RPC here and expects SSE response stream
+app.post("/sse", async (req, res) => {
+  console.log("SSE POST (StreamableHTTP) from", req.ip);
+  // For StreamableHTTP, handle as a single request/response over SSE
+  const body = req.body;
+
+  // Set SSE headers
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("Access-Control-Allow-Origin", "*");
+
+  const sendEvent = (data) => {
+    res.write("data: " + JSON.stringify(data) + "\n\n");
+  };
+
+  try {
+    let result;
+    const method = body.method;
+    const id = body.id;
+
+    if (method === "initialize") {
+      result = {
+        protocolVersion: body.params?.protocolVersion || "2024-11-05",
+        capabilities: { tools: {} },
+        serverInfo: { name: "wave-compute", version: "4.1.0" },
+      };
+    } else if (method === "tools/list") {
+      result = await forwardToBackend("tools/list", body.params || {}, id);
+    } else if (method === "tools/call") {
+      result = await forwardToBackend("tools/call", body.params || {}, id);
+    } else {
+      result = { error: "Unknown method: " + method };
+    }
+
+    sendEvent({ jsonrpc: "2.0", id, result });
+  } catch (err) {
+    sendEvent({ jsonrpc: "2.0", id: body.id, error: { code: -32000, message: err.message } });
+  }
+
+  res.end();
+});
+
+// POST /messages — session-based messages for legacy SSE
 app.post("/messages", async (req, res) => {
   const sessionId = req.query.sessionId;
   const transport = transports[sessionId];
@@ -100,23 +138,23 @@ app.post("/messages", async (req, res) => {
   await transport.handlePostMessage(req, res);
 });
 
-// Health check
-app.get("/", (req, res) => {
-  res.json({
-    status: "ok",
-    service: "wave-compute-mcp",
-    version: "4.0.0",
-    backend: MCP_BACKEND_URL,
-    sessions: Object.keys(transports).length,
-  });
+// OPTIONS — CORS preflight
+app.options("*", (req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.sendStatus(200);
 });
 
-app.get("/health", (req, res) => {
-  res.json({ ok: true });
-});
+// Health
+app.get("/health", (req, res) => res.json({ ok: true }));
+app.get("/", (req, res) => res.json({
+  status: "ok", service: "wave-compute-mcp", version: "4.1.0",
+  backend: MCP_BACKEND_URL, sessions: Object.keys(transports).length,
+}));
 
 app.listen(PORT, () => {
-  console.log("Wave Compute MCP SSE bridge running on port " + PORT);
+  console.log("Wave Compute MCP SSE bridge v4.1.0 running on port " + PORT);
   console.log("SSE endpoint: http://localhost:" + PORT + "/sse");
   console.log("Backend: " + MCP_BACKEND_URL);
 });
